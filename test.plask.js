@@ -10,6 +10,7 @@ sys.Window.create({
 
   },
   draw: function() {
-    
+    this.gl.clearColor(1, 0, 0, 1);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 });
