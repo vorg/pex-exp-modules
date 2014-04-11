@@ -1,5 +1,15 @@
 var sys = require('pex-sys');
 var glu = require('pex-glu');
+var geom = require('pex-geom');
+var materials = require('pex-materials');
+var color = require('pex-color');
+
+var Cube = geom.gen.Cube;
+var Mesh = glu.Mesh;
+var ShowNormals = materials.ShowNormals;
+var PerspectiveCamera = glu.PerspectiveCamera;
+var Arcball = glu.Arcball;
+var Color = color.Color;
 
 sys.Window.create({
   settings: {
@@ -8,10 +18,15 @@ sys.Window.create({
     type: '3d'
   },
   init: function() {
-    console.log('Context', glu.Context.currentContext);
+    var cube = new Cube();
+    this.mesh = new Mesh(cube, new ShowNormals());
+
+    this.camera = new PerspectiveCamera(60, this.width / this.height);
+    this.arcball = new Arcball(this, this.camera);
   },
   draw: function() {
-    this.gl.clearColor(1, 0, 0, 1);
-    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    glu.clearColorAndDepth(Color.Red);
+    glu.enableDepthWriteAndRead(true);
+    this.mesh.draw(this.camera);
   }
 });
