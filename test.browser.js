@@ -1,6 +1,298 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+
+},{}],2:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+
+process.nextTick = (function () {
+    var canSetImmediate = typeof window !== 'undefined'
+    && window.setImmediate;
+    var canPost = typeof window !== 'undefined'
+    && window.postMessage && window.addEventListener
+    ;
+
+    if (canSetImmediate) {
+        return function (f) { return window.setImmediate(f) };
+    }
+
+    if (canPost) {
+        var queue = [];
+        window.addEventListener('message', function (ev) {
+            var source = ev.source;
+            if ((source === window || source === null) && ev.data === 'process-tick') {
+                ev.stopPropagation();
+                if (queue.length > 0) {
+                    var fn = queue.shift();
+                    fn();
+                }
+            }
+        }, true);
+
+        return function nextTick(fn) {
+            queue.push(fn);
+            window.postMessage('process-tick', '*');
+        };
+    }
+
+    return function nextTick(fn) {
+        setTimeout(fn, 0);
+    };
+})();
+
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+
+function noop() {}
+
+process.on = noop;
+process.once = noop;
+process.off = noop;
+process.emit = noop;
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+}
+
+// TODO(shtylman)
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+
+},{}],3:[function(require,module,exports){
+(function (process){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// resolves . and .. elements in a path array with directory names there
+// must be no slashes, empty elements, or device names (c:\) in the array
+// (so also no leading and trailing slashes - it does not distinguish
+// relative and absolute paths)
+function normalizeArray(parts, allowAboveRoot) {
+  // if the path tries to go above the root, `up` ends up > 0
+  var up = 0;
+  for (var i = parts.length - 1; i >= 0; i--) {
+    var last = parts[i];
+    if (last === '.') {
+      parts.splice(i, 1);
+    } else if (last === '..') {
+      parts.splice(i, 1);
+      up++;
+    } else if (up) {
+      parts.splice(i, 1);
+      up--;
+    }
+  }
+
+  // if the path is allowed to go above the root, restore leading ..s
+  if (allowAboveRoot) {
+    for (; up--; up) {
+      parts.unshift('..');
+    }
+  }
+
+  return parts;
+}
+
+// Split a filename into [root, dir, basename, ext], unix version
+// 'root' is just a slash, or nothing.
+var splitPathRe =
+    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
+var splitPath = function(filename) {
+  return splitPathRe.exec(filename).slice(1);
+};
+
+// path.resolve([from ...], to)
+// posix version
+exports.resolve = function() {
+  var resolvedPath = '',
+      resolvedAbsolute = false;
+
+  for (var i = arguments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+    var path = (i >= 0) ? arguments[i] : process.cwd();
+
+    // Skip empty and invalid entries
+    if (typeof path !== 'string') {
+      throw new TypeError('Arguments to path.resolve must be strings');
+    } else if (!path) {
+      continue;
+    }
+
+    resolvedPath = path + '/' + resolvedPath;
+    resolvedAbsolute = path.charAt(0) === '/';
+  }
+
+  // At this point the path should be resolved to a full absolute path, but
+  // handle relative paths to be safe (might happen when process.cwd() fails)
+
+  // Normalize the path
+  resolvedPath = normalizeArray(filter(resolvedPath.split('/'), function(p) {
+    return !!p;
+  }), !resolvedAbsolute).join('/');
+
+  return ((resolvedAbsolute ? '/' : '') + resolvedPath) || '.';
+};
+
+// path.normalize(path)
+// posix version
+exports.normalize = function(path) {
+  var isAbsolute = exports.isAbsolute(path),
+      trailingSlash = substr(path, -1) === '/';
+
+  // Normalize the path
+  path = normalizeArray(filter(path.split('/'), function(p) {
+    return !!p;
+  }), !isAbsolute).join('/');
+
+  if (!path && !isAbsolute) {
+    path = '.';
+  }
+  if (path && trailingSlash) {
+    path += '/';
+  }
+
+  return (isAbsolute ? '/' : '') + path;
+};
+
+// posix version
+exports.isAbsolute = function(path) {
+  return path.charAt(0) === '/';
+};
+
+// posix version
+exports.join = function() {
+  var paths = Array.prototype.slice.call(arguments, 0);
+  return exports.normalize(filter(paths, function(p, index) {
+    if (typeof p !== 'string') {
+      throw new TypeError('Arguments to path.join must be strings');
+    }
+    return p;
+  }).join('/'));
+};
+
+
+// path.relative(from, to)
+// posix version
+exports.relative = function(from, to) {
+  from = exports.resolve(from).substr(1);
+  to = exports.resolve(to).substr(1);
+
+  function trim(arr) {
+    var start = 0;
+    for (; start < arr.length; start++) {
+      if (arr[start] !== '') break;
+    }
+
+    var end = arr.length - 1;
+    for (; end >= 0; end--) {
+      if (arr[end] !== '') break;
+    }
+
+    if (start > end) return [];
+    return arr.slice(start, end - start + 1);
+  }
+
+  var fromParts = trim(from.split('/'));
+  var toParts = trim(to.split('/'));
+
+  var length = Math.min(fromParts.length, toParts.length);
+  var samePartsLength = length;
+  for (var i = 0; i < length; i++) {
+    if (fromParts[i] !== toParts[i]) {
+      samePartsLength = i;
+      break;
+    }
+  }
+
+  var outputParts = [];
+  for (var i = samePartsLength; i < fromParts.length; i++) {
+    outputParts.push('..');
+  }
+
+  outputParts = outputParts.concat(toParts.slice(samePartsLength));
+
+  return outputParts.join('/');
+};
+
+exports.sep = '/';
+exports.delimiter = ':';
+
+exports.dirname = function(path) {
+  var result = splitPath(path),
+      root = result[0],
+      dir = result[1];
+
+  if (!root && !dir) {
+    // No dirname whatsoever
+    return '.';
+  }
+
+  if (dir) {
+    // It has a dirname, strip trailing slash
+    dir = dir.substr(0, dir.length - 1);
+  }
+
+  return root + dir;
+};
+
+
+exports.basename = function(path, ext) {
+  var f = splitPath(path)[2];
+  // TODO: make this comparison case-insensitive on windows?
+  if (ext && f.substr(-1 * ext.length) === ext) {
+    f = f.substr(0, f.length - ext.length);
+  }
+  return f;
+};
+
+
+exports.extname = function(path) {
+  return splitPath(path)[3];
+};
+
+function filter (xs, f) {
+    if (xs.filter) return xs.filter(f);
+    var res = [];
+    for (var i = 0; i < xs.length; i++) {
+        if (f(xs[i], i, xs)) res.push(xs[i]);
+    }
+    return res;
+}
+
+// String.prototype.substr - negative index don't work in IE8
+var substr = 'ab'.substr(-1) === 'b'
+    ? function (str, start, len) { return str.substr(start, len) }
+    : function (str, start, len) {
+        if (start < 0) start = str.length + start;
+        return str.substr(start, len);
+    }
+;
+
+}).call(this,require("/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
+},{"/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":2}],4:[function(require,module,exports){
 module.exports.Color = require('./lib/Color')
-},{"./lib/Color":2}],2:[function(require,module,exports){
+},{"./lib/Color":5}],5:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Color, clamp;
 
@@ -104,7 +396,7 @@ Color.Orange = new Color(1, 0.5, 0, 1);
 
 module.exports = Color;
 
-},{}],3:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 module.exports.Vec2 = require('./lib/Vec2');
 module.exports.Vec3 = require('./lib/Vec3');
 module.exports.Vec4 = require('./lib/Vec4');
@@ -119,7 +411,7 @@ module.exports.Geometry = require('./lib/Geometry');
 module.exports.gen = {
   Cube: require('./lib/gen/Cube')
 }
-},{"./lib/Edge":4,"./lib/Face3":5,"./lib/Face4":6,"./lib/FacePolygon":7,"./lib/Geometry":8,"./lib/Mat4":9,"./lib/Quat":10,"./lib/Ray":11,"./lib/Vec2":12,"./lib/Vec3":13,"./lib/Vec4":14,"./lib/gen/Cube":15}],4:[function(require,module,exports){
+},{"./lib/Edge":7,"./lib/Face3":8,"./lib/Face4":9,"./lib/FacePolygon":10,"./lib/Geometry":11,"./lib/Mat4":12,"./lib/Quat":13,"./lib/Ray":14,"./lib/Vec2":15,"./lib/Vec3":16,"./lib/Vec4":17,"./lib/gen/Cube":18}],7:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Edge;
 
@@ -135,7 +427,7 @@ Edge = (function() {
 
 module.exports = Edge;
 
-},{}],5:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Face3;
 
@@ -152,7 +444,7 @@ Face3 = (function() {
 
 module.exports = Face3;
 
-},{}],6:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Face4;
 
@@ -170,7 +462,7 @@ Face4 = (function() {
 
 module.exports = Face4;
 
-},{}],7:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 function FacePolygon(vertexIndexList) {
   this.numVertices = vertexIndexList.length;
   var indices = [
@@ -192,7 +484,7 @@ function FacePolygon(vertexIndexList) {
 
 module.exports = FacePolygon;
 
-},{}],8:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Edge, Face3, Face4, Geometry, Vec2, Vec3, Vec4;
 
@@ -430,7 +722,7 @@ Geometry = (function() {
 
 module.exports = Geometry;
 
-},{"./Edge":4,"./Face3":5,"./Face4":6,"./Vec2":12,"./Vec3":13,"./Vec4":14}],9:[function(require,module,exports){
+},{"./Edge":7,"./Face3":8,"./Face4":9,"./Vec2":15,"./Vec3":16,"./Vec4":17}],12:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, Vec3;
 
@@ -755,7 +1047,7 @@ Mat4.count = 0;
 
 module.exports = Mat4;
 
-},{"./Vec3":13}],10:[function(require,module,exports){
+},{"./Vec3":16}],13:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, Quat, kEpsilon;
 
@@ -912,7 +1204,7 @@ Quat = (function() {
 
 module.exports = Quat;
 
-},{"./Mat4":9}],11:[function(require,module,exports){
+},{"./Mat4":12}],14:[function(require,module,exports){
 var Vec3 = require('./Vec3');
 
 //A ray.  
@@ -1001,7 +1293,7 @@ Ray.prototype.hitTestBoundingBox = function (bbox) {
 };
 
 module.exports = Ray;
-},{"./Vec3":13}],12:[function(require,module,exports){
+},{"./Vec3":16}],15:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Vec2;
 
@@ -1123,7 +1415,7 @@ Vec2 = (function() {
 
 module.exports = Vec2;
 
-},{}],13:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Vec3;
 
@@ -1326,7 +1618,7 @@ Vec3 = (function() {
 
 module.exports = Vec3;
 
-},{}],14:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Vec4;
 
@@ -1399,7 +1691,7 @@ Vec4 = (function() {
 
 module.exports = Vec4;
 
-},{}],15:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Cube, Face4, Geometry, Vec2, Vec3,
   __hasProp = {}.hasOwnProperty,
@@ -1482,7 +1774,7 @@ Cube = (function(_super) {
 
 module.exports = Cube;
 
-},{"../Face4":6,"../Geometry":8,"../Vec2":12,"../Vec3":13}],16:[function(require,module,exports){
+},{"../Face4":9,"../Geometry":11,"../Vec2":15,"../Vec3":16}],19:[function(require,module,exports){
 module.exports.Context = require('./lib/Context');
 module.exports.Texture2D = require('./lib/Texture2D');
 module.exports.Program = require('./lib/Program');
@@ -1499,7 +1791,7 @@ for(var funcName in Utils) {
 }
 
 
-},{"./lib/Arcball":17,"./lib/Context":19,"./lib/Material":20,"./lib/Mesh":21,"./lib/OrthographicCamera":22,"./lib/PerspectiveCamera":23,"./lib/Program":24,"./lib/Texture2D":27,"./lib/Utils":28}],17:[function(require,module,exports){
+},{"./lib/Arcball":20,"./lib/Context":22,"./lib/Material":23,"./lib/Mesh":24,"./lib/OrthographicCamera":25,"./lib/PerspectiveCamera":26,"./lib/Program":27,"./lib/Texture2D":30,"./lib/Utils":31}],20:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Arcball, Mat4, Quat, Vec2, Vec3, Vec4, _ref;
 
@@ -1614,7 +1906,7 @@ Arcball = (function() {
 
 module.exports = Arcball;
 
-},{"pex-geom":3}],18:[function(require,module,exports){
+},{"pex-geom":6}],21:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Buffer, Color, Context, Edge, Face3, Face4, FacePolygon, Vec2, Vec3, Vec4, _ref;
 
@@ -1764,7 +2056,7 @@ Buffer = (function() {
 
 module.exports = Buffer;
 
-},{"pex-color":1,"pex-geom":3,"pex-glu":16}],19:[function(require,module,exports){
+},{"pex-color":4,"pex-geom":6,"pex-glu":19}],22:[function(require,module,exports){
 var sys = require('pex-sys');
 
 var currentGLContext = null;
@@ -1792,7 +2084,7 @@ Object.defineProperty(Context, 'currentContext', {
 });
 
 module.exports = Context;
-},{"pex-sys":33}],20:[function(require,module,exports){
+},{"pex-sys":34}],23:[function(require,module,exports){
 var Context = require('./Context');
 
 function Material(program, uniforms) {
@@ -1836,7 +2128,7 @@ Material.prototype.use = function () {
 };
 
 module.exports = Material;
-},{"./Context":19}],21:[function(require,module,exports){
+},{"./Context":22}],24:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var BoundingBox, Context, Mat4, Mesh, Quat, RenderableGeometry, Vec3, _ref;
 
@@ -2077,7 +2369,7 @@ Mesh = (function() {
 
 module.exports = Mesh;
 
-},{"./RenderableGeometry":25,"pex-geom":3,"pex-glu":16}],22:[function(require,module,exports){
+},{"./RenderableGeometry":28,"pex-geom":6,"pex-glu":19}],25:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, OrthographicCamera, Ray, Vec2, Vec3, Vec4, _ref;
 
@@ -2230,7 +2522,7 @@ OrthographicCamera = (function() {
 
 module.exports = OrthographicCamera;
 
-},{"pex-geom":3}],23:[function(require,module,exports){
+},{"pex-geom":6}],26:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, PerspectiveCamera, Ray, Vec2, Vec3, Vec4, _ref;
 
@@ -2381,7 +2673,7 @@ PerspectiveCamera = (function() {
 
 module.exports = PerspectiveCamera;
 
-},{"pex-geom":3}],24:[function(require,module,exports){
+},{"pex-geom":6}],27:[function(require,module,exports){
 var Context = require('./Context');
 
 var kVertexShaderPrefix = '' +
@@ -2592,7 +2884,7 @@ Program.makeUniformSetter = function(gl, type, location) {
 };
 
 module.exports = Program;
-},{"./Context":19}],25:[function(require,module,exports){
+},{"./Context":22}],28:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Buffer, Context, Geometry, indexTypes;
 
@@ -2667,7 +2959,7 @@ Geometry.prototype.dispose = function() {
 
 module.exports = {};
 
-},{"./Buffer":18,"./Context":19,"pex-geom":3}],26:[function(require,module,exports){
+},{"./Buffer":21,"./Context":22,"pex-geom":6}],29:[function(require,module,exports){
 var Context = require('./Context');
 
 function Texture(target) {
@@ -2695,7 +2987,7 @@ Texture.prototype.bind = function(unit) {
 };
 
 module.exports = Texture;
-},{"./Context":19}],27:[function(require,module,exports){
+},{"./Context":22}],30:[function(require,module,exports){
 var Context = require('./Context');
 var Texture = require('./Texture');
 
@@ -2828,7 +3120,7 @@ Texture2D.prototype.dispose = function() {
 };
 
 module.exports = Texture2D;
-},{"./Context":19,"./Texture":26}],28:[function(require,module,exports){
+},{"./Context":22,"./Texture":29}],31:[function(require,module,exports){
 var Context = require('./Context');
 
 module.exports.getCurrentContext = function() {
@@ -2906,10 +3198,7 @@ module.exports.lineWidth = function(width) {
   gl.lineWidth(width);
   return this;
 }
-},{"./Context":19}],29:[function(require,module,exports){
-module.exports.SolidColor = require('./lib/SolidColor');
-module.exports.ShowNormals = require('./lib/ShowNormals');
-},{"./lib/ShowNormals":30,"./lib/SolidColor":31}],30:[function(require,module,exports){
+},{"./Context":22}],32:[function(require,module,exports){
 var glu = require('pex-glu');
 var color = require('pex-color');
 var Context = glu.Context;
@@ -2917,30 +3206,8 @@ var Material = glu.Material;
 var Program = glu.Program;
 var Color = color.Color;
 var merge = require('merge');
+var fs = require('fs');
 
-var ShowNormalsGLSL = '#ifdef VERT\n\nuniform mat4 projectionMatrix;\nuniform mat4 modelViewMatrix;\nuniform float pointSize;\nattribute vec3 position;\nattribute vec3 normal;\nvarying vec4 vColor;\nvoid main() {\n  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);\n  gl_PointSize = pointSize;\n  vColor = vec4(normal * 0.5 + 0.5, 1.0);\n}\n\n#endif\n\n#ifdef FRAG\n\nvarying vec4 vColor;\n\nvoid main() {\n  gl_FragColor = vColor;\n}\n\n#endif\n';
-
-function ShowNormals(uniforms) {
-  this.gl = Context.currentContext;
-  var program = new Program(ShowNormalsGLSL);
-  var defaults = { pointSize: 1 };
-  uniforms = merge(defaults, uniforms);
-  Material.call(this, program, uniforms);
-}
-
-ShowNormals.prototype = Object.create(Material.prototype);
-
-module.exports = ShowNormals;
-},{"merge":32,"pex-color":1,"pex-glu":16}],31:[function(require,module,exports){
-var glu = require('pex-glu');
-var color = require('pex-color');
-var Context = glu.Context;
-var Material = glu.Material;
-var Program = glu.Program;
-var Color = color.Color;
-var merge = require('merge');
-
-//FIXME: inlining js code is uggly!
 var SolidColorGLSL = "#ifdef VERT\n\nuniform mat4 projectionMatrix;\nuniform mat4 modelViewMatrix;\nuniform float pointSize;\nattribute vec3 position;\n\nvoid main() {\n  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);\n  gl_PointSize = pointSize;\n}\n\n#endif\n\n#ifdef FRAG\n\nuniform vec4 color;\nuniform bool premultiplied;\n\nvoid main() {\n  gl_FragColor = color;\n  if (premultiplied) {\n    gl_FragColor.rgb *= color.a;\n  }\n}\n\n#endif\n";
 
 function SolidColor(uniforms) {
@@ -2958,7 +3225,7 @@ function SolidColor(uniforms) {
 SolidColor.prototype = Object.create(Material.prototype);
 
 module.exports = SolidColor;
-},{"merge":32,"pex-color":1,"pex-glu":16}],32:[function(require,module,exports){
+},{"fs":1,"merge":33,"pex-color":4,"pex-glu":19}],33:[function(require,module,exports){
 /*!
  * @name JavaScript/NodeJS Merge v1.1.2
  * @author yeikos
@@ -3040,12 +3307,12 @@ module.exports = SolidColor;
 	}
 
 })(typeof module === 'object' && module && typeof module.exports === 'object' && module.exports);
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 module.exports.Platform = require('./lib/Platform');
 module.exports.Window = require('./lib/Window');
 module.exports.Node = require('./lib/Node');
 module.exports.Time = require('./lib/Time');
-},{"./lib/Node":35,"./lib/Platform":36,"./lib/Time":37,"./lib/Window":38}],34:[function(require,module,exports){
+},{"./lib/Node":36,"./lib/Platform":37,"./lib/Time":38,"./lib/Window":39}],35:[function(require,module,exports){
 var Platform = require('./Platform');
 
 var requestAnimFrameFps = 60;
@@ -3286,7 +3553,7 @@ function simpleWindow(obj) {
     var ctx = null;
     if (obj.settings.type == '3d') {
       try {
-        gl = canvas.getContext('experimental-webgl', { antialias: false });  //, {antialias: true, premultipliedAlpha : true, stencil: obj.settings.stencil}
+        gl = canvas.getContext('experimental-webgl', { antialias: true });  //, {antialias: true, premultipliedAlpha : true, stencil: obj.settings.stencil}
       } catch (err) {
         console.error(err.message);
         return;
@@ -3340,20 +3607,20 @@ function simpleWindow(obj) {
 var BrowserWindow = { simpleWindow: simpleWindow };
 
 module.exports = BrowserWindow;
-},{"./Platform":36}],35:[function(require,module,exports){
+},{"./Platform":37}],36:[function(require,module,exports){
 var Platform = require('./Platform');
 
 module.exports.plask = Platform.isPlask ? require('plask') : {};
 module.exports.fs = Platform.isPlask ? require('fs') : {};
 module.exports.path = Platform.isPlask ? require('path') : {};
-},{"./Platform":36,"fs":41,"path":43,"plask":41}],36:[function(require,module,exports){
+},{"./Platform":37,"fs":1,"path":3,"plask":1}],37:[function(require,module,exports){
 (function (process){
 module.exports.isPlask = typeof window === 'undefined' && typeof process === 'object';
 module.exports.isBrowser = typeof window === 'object' && typeof document === 'object';
 module.exports.isEjecta = typeof ejecta === 'object' && typeof ejecta.include === 'function';
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":42}],37:[function(require,module,exports){
+}).call(this,require("/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
+},{"/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":2}],38:[function(require,module,exports){
 var Time = {
     now: 0,
     prev: 0,
@@ -3426,7 +3693,7 @@ Time.togglePause = function() {
 };
 
 module.exports = Time;
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 var Platform = require('./Platform');
 var BrowserWindow = require('./BrowserWindow');
 var Node = require('./Node');
@@ -3482,332 +3749,6 @@ var Window = {
 };
 
 module.exports = Window;
-},{"./BrowserWindow":34,"./Node":35,"./Platform":36,"./Time":37,"merge":39}],39:[function(require,module,exports){
-module.exports=require(32)
-},{}],40:[function(require,module,exports){
-var sys = require('pex-sys');
-var glu = require('pex-glu');
-var geom = require('pex-geom');
-var materials = require('pex-materials');
-var color = require('pex-color');
-
-var Cube = geom.gen.Cube;
-var Mesh = glu.Mesh;
-var ShowNormals = materials.ShowNormals;
-var PerspectiveCamera = glu.PerspectiveCamera;
-var Arcball = glu.Arcball;
-var Color = color.Color;
-
-sys.Window.create({
-  settings: {
-    width: 1280,
-    height: 720,
-    type: '3d',
-    fullscreen: sys.Platform.isBrowser
-  },
-  init: function() {
-    var cube = new Cube();
-    this.mesh = new Mesh(cube, new ShowNormals());
-
-    this.camera = new PerspectiveCamera(60, this.width / this.height);
-    this.arcball = new Arcball(this, this.camera);
-  },
-  draw: function() {
-    glu.clearColorAndDepth(Color.Red);
-    glu.enableDepthWriteAndRead(true);
-    this.mesh.draw(this.camera);
-  }
-});
-},{"pex-color":1,"pex-geom":3,"pex-glu":16,"pex-materials":29,"pex-sys":33}],41:[function(require,module,exports){
-
-},{}],42:[function(require,module,exports){
-// shim for using process in browser
-
-var process = module.exports = {};
-
-process.nextTick = (function () {
-    var canSetImmediate = typeof window !== 'undefined'
-    && window.setImmediate;
-    var canPost = typeof window !== 'undefined'
-    && window.postMessage && window.addEventListener
-    ;
-
-    if (canSetImmediate) {
-        return function (f) { return window.setImmediate(f) };
-    }
-
-    if (canPost) {
-        var queue = [];
-        window.addEventListener('message', function (ev) {
-            var source = ev.source;
-            if ((source === window || source === null) && ev.data === 'process-tick') {
-                ev.stopPropagation();
-                if (queue.length > 0) {
-                    var fn = queue.shift();
-                    fn();
-                }
-            }
-        }, true);
-
-        return function nextTick(fn) {
-            queue.push(fn);
-            window.postMessage('process-tick', '*');
-        };
-    }
-
-    return function nextTick(fn) {
-        setTimeout(fn, 0);
-    };
-})();
-
-process.title = 'browser';
-process.browser = true;
-process.env = {};
-process.argv = [];
-
-function noop() {}
-
-process.on = noop;
-process.once = noop;
-process.off = noop;
-process.emit = noop;
-
-process.binding = function (name) {
-    throw new Error('process.binding is not supported');
-}
-
-// TODO(shtylman)
-process.cwd = function () { return '/' };
-process.chdir = function (dir) {
-    throw new Error('process.chdir is not supported');
-};
-
-},{}],43:[function(require,module,exports){
-(function (process){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-// resolves . and .. elements in a path array with directory names there
-// must be no slashes, empty elements, or device names (c:\) in the array
-// (so also no leading and trailing slashes - it does not distinguish
-// relative and absolute paths)
-function normalizeArray(parts, allowAboveRoot) {
-  // if the path tries to go above the root, `up` ends up > 0
-  var up = 0;
-  for (var i = parts.length - 1; i >= 0; i--) {
-    var last = parts[i];
-    if (last === '.') {
-      parts.splice(i, 1);
-    } else if (last === '..') {
-      parts.splice(i, 1);
-      up++;
-    } else if (up) {
-      parts.splice(i, 1);
-      up--;
-    }
-  }
-
-  // if the path is allowed to go above the root, restore leading ..s
-  if (allowAboveRoot) {
-    for (; up--; up) {
-      parts.unshift('..');
-    }
-  }
-
-  return parts;
-}
-
-// Split a filename into [root, dir, basename, ext], unix version
-// 'root' is just a slash, or nothing.
-var splitPathRe =
-    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
-var splitPath = function(filename) {
-  return splitPathRe.exec(filename).slice(1);
-};
-
-// path.resolve([from ...], to)
-// posix version
-exports.resolve = function() {
-  var resolvedPath = '',
-      resolvedAbsolute = false;
-
-  for (var i = arguments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-    var path = (i >= 0) ? arguments[i] : process.cwd();
-
-    // Skip empty and invalid entries
-    if (typeof path !== 'string') {
-      throw new TypeError('Arguments to path.resolve must be strings');
-    } else if (!path) {
-      continue;
-    }
-
-    resolvedPath = path + '/' + resolvedPath;
-    resolvedAbsolute = path.charAt(0) === '/';
-  }
-
-  // At this point the path should be resolved to a full absolute path, but
-  // handle relative paths to be safe (might happen when process.cwd() fails)
-
-  // Normalize the path
-  resolvedPath = normalizeArray(filter(resolvedPath.split('/'), function(p) {
-    return !!p;
-  }), !resolvedAbsolute).join('/');
-
-  return ((resolvedAbsolute ? '/' : '') + resolvedPath) || '.';
-};
-
-// path.normalize(path)
-// posix version
-exports.normalize = function(path) {
-  var isAbsolute = exports.isAbsolute(path),
-      trailingSlash = substr(path, -1) === '/';
-
-  // Normalize the path
-  path = normalizeArray(filter(path.split('/'), function(p) {
-    return !!p;
-  }), !isAbsolute).join('/');
-
-  if (!path && !isAbsolute) {
-    path = '.';
-  }
-  if (path && trailingSlash) {
-    path += '/';
-  }
-
-  return (isAbsolute ? '/' : '') + path;
-};
-
-// posix version
-exports.isAbsolute = function(path) {
-  return path.charAt(0) === '/';
-};
-
-// posix version
-exports.join = function() {
-  var paths = Array.prototype.slice.call(arguments, 0);
-  return exports.normalize(filter(paths, function(p, index) {
-    if (typeof p !== 'string') {
-      throw new TypeError('Arguments to path.join must be strings');
-    }
-    return p;
-  }).join('/'));
-};
-
-
-// path.relative(from, to)
-// posix version
-exports.relative = function(from, to) {
-  from = exports.resolve(from).substr(1);
-  to = exports.resolve(to).substr(1);
-
-  function trim(arr) {
-    var start = 0;
-    for (; start < arr.length; start++) {
-      if (arr[start] !== '') break;
-    }
-
-    var end = arr.length - 1;
-    for (; end >= 0; end--) {
-      if (arr[end] !== '') break;
-    }
-
-    if (start > end) return [];
-    return arr.slice(start, end - start + 1);
-  }
-
-  var fromParts = trim(from.split('/'));
-  var toParts = trim(to.split('/'));
-
-  var length = Math.min(fromParts.length, toParts.length);
-  var samePartsLength = length;
-  for (var i = 0; i < length; i++) {
-    if (fromParts[i] !== toParts[i]) {
-      samePartsLength = i;
-      break;
-    }
-  }
-
-  var outputParts = [];
-  for (var i = samePartsLength; i < fromParts.length; i++) {
-    outputParts.push('..');
-  }
-
-  outputParts = outputParts.concat(toParts.slice(samePartsLength));
-
-  return outputParts.join('/');
-};
-
-exports.sep = '/';
-exports.delimiter = ':';
-
-exports.dirname = function(path) {
-  var result = splitPath(path),
-      root = result[0],
-      dir = result[1];
-
-  if (!root && !dir) {
-    // No dirname whatsoever
-    return '.';
-  }
-
-  if (dir) {
-    // It has a dirname, strip trailing slash
-    dir = dir.substr(0, dir.length - 1);
-  }
-
-  return root + dir;
-};
-
-
-exports.basename = function(path, ext) {
-  var f = splitPath(path)[2];
-  // TODO: make this comparison case-insensitive on windows?
-  if (ext && f.substr(-1 * ext.length) === ext) {
-    f = f.substr(0, f.length - ext.length);
-  }
-  return f;
-};
-
-
-exports.extname = function(path) {
-  return splitPath(path)[3];
-};
-
-function filter (xs, f) {
-    if (xs.filter) return xs.filter(f);
-    var res = [];
-    for (var i = 0; i < xs.length; i++) {
-        if (f(xs[i], i, xs)) res.push(xs[i]);
-    }
-    return res;
-}
-
-// String.prototype.substr - negative index don't work in IE8
-var substr = 'ab'.substr(-1) === 'b'
-    ? function (str, start, len) { return str.substr(start, len) }
-    : function (str, start, len) {
-        if (start < 0) start = str.length + start;
-        return str.substr(start, len);
-    }
-;
-
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":42}]},{},[40])
+},{"./BrowserWindow":35,"./Node":36,"./Platform":37,"./Time":38,"merge":40}],40:[function(require,module,exports){
+module.exports=require(33)
+},{}]},{},[32])
