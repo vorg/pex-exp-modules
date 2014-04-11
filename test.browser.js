@@ -3260,11 +3260,11 @@ function simpleWindow(obj) {
     canvas.width = obj.settings.width;
     canvas.height = obj.settings.height;
   }
-  if (Platform.isEjecta && window.devicePixelRatio == 2) {
+  if (window.devicePixelRatio == 2) {
     canvas.width = obj.settings.width * 2;
     canvas.height = obj.settings.height * 2;
-    canvas.style.width = obj.settings.width;
-    canvas.style.height = obj.settings.height;
+    canvas.style.width = obj.settings.width + 'px';
+    canvas.style.height = obj.settings.height + 'px';
     canvas.msaaEnabled = true;
     canvas.msaaSamples = 2;
     obj.settings.width *= 2;
@@ -3286,7 +3286,7 @@ function simpleWindow(obj) {
     var ctx = null;
     if (obj.settings.type == '3d') {
       try {
-        gl = canvas.getContext('experimental-webgl', { antialias: true });  //, {antialias: true, premultipliedAlpha : true, stencil: obj.settings.stencil}
+        gl = canvas.getContext('experimental-webgl', { antialias: false });  //, {antialias: true, premultipliedAlpha : true, stencil: obj.settings.stencil}
       } catch (err) {
         console.error(err.message);
         return;
@@ -3502,7 +3502,8 @@ sys.Window.create({
   settings: {
     width: 1280,
     height: 720,
-    type: '3d'
+    type: '3d',
+    fullscreen: sys.Platform.isBrowser
   },
   init: function() {
     var cube = new Cube();
