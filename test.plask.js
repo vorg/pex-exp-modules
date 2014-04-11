@@ -1,4 +1,5 @@
 var sys = require('pex-sys');
+var glu = require('pex-glu');
 
 sys.Window.create({
   settings: {
@@ -7,7 +8,7 @@ sys.Window.create({
     type: '3d'
   },
   init: function() {
-
+    console.log('Context', glu.Context.currentContext);
   },
   draw: function() {
     this.gl.clearColor(1, 0, 0, 1);
