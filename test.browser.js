@@ -397,108 +397,321 @@ Color.Orange = new Color(1, 0.5, 0, 1);
 module.exports = Color;
 
 },{}],6:[function(require,module,exports){
+var FXStage = require('./lib/FXStage');
+require('./lib/Render');
+require('./lib/Blit');
+require('./lib/Blur5');
+require('./lib/Downsample4');
+
+var globalFx;
+
+module.exports = function() {
+  if (!globalFx) {
+    globalFx = new FXStage();
+  }
+  globalFx.reset();
+  return globalFx;
+};
+},{"./lib/Blit":7,"./lib/Blur5":8,"./lib/Downsample4":9,"./lib/FXStage":11,"./lib/Render":12}],7:[function(require,module,exports){
+var FXStage = require('./FXStage');
+
+FXStage.prototype.blit = function (options) {
+  options = options || {};
+  var outputSize = this.getOutputSize(options.width, options.height);
+  var x = options.x || 0;
+  var y = options.y || 0;
+  this.drawFullScreenQuadAt(x, y, outputSize.width, outputSize.height, this.getSourceTexture());
+  return this;
+};
+
+module.exports = FXStage;
+},{"./FXStage":11}],8:[function(require,module,exports){
+(function (__dirname){
+var geom  = require('pex-geom');
+var Vec2 = geom.Vec2;
+var FXStage = require('./FXStage');
+var fs = require('fs');
+
+var Blur5HGLSL = "#ifdef VERT\n\nattribute vec2 position;\nattribute vec2 texCoord;\n\nvarying vec2 vTexCoord;\n\nvoid main() {\n  gl_Position = vec4(position, 0.0, 1.0);\n  vTexCoord = texCoord;\n}\n\n#endif\n\n#ifdef FRAG\n\nvarying vec2 vTexCoord;\n\nuniform sampler2D image;\nuniform vec2 imageSize;\n\nvoid main() {\n  vec2 texel = vec2(1.0 / imageSize.x, 1.0 / imageSize.y);\n\n  vec4 color = vec4(0.0);\n  color += 1.0/16.0 * texture2D(image, vTexCoord + vec2(texel.x * -2.0, 0.0));\n  color += 4.0/16.0 * texture2D(image, vTexCoord + vec2(texel.x * -1.0, 0.0));\n  color += 6.0/16.0 * texture2D(image, vTexCoord + vec2(texel.x *  0.0, 0.0));\n  color += 4.0/16.0 * texture2D(image, vTexCoord + vec2(texel.x *  1.0, 0.0));\n  color += 1.0/16.0 * texture2D(image, vTexCoord + vec2(texel.x *  2.0, 0.0));\n  gl_FragColor = color;\n}\n\n#endif\n";
+var Blur5VGLSL = "#ifdef VERT\n\nattribute vec2 position;\nattribute vec2 texCoord;\n\nvarying vec2 vTexCoord;\n\nvoid main() {\n  gl_Position = vec4(position, 0.0, 1.0);\n  vTexCoord = texCoord;\n}\n\n#endif\n\n#ifdef FRAG\n\nvarying vec2 vTexCoord;\n\nuniform sampler2D image;\nuniform vec2 imageSize;\n\nvoid main() {\n  vec2 texel = vec2(1.0 / imageSize.x, 1.0 / imageSize.y);\n\n  vec4 color = vec4(0.0);\n  color += 1.0/16.0 * texture2D(image, vTexCoord + vec2(0.0, texel.y * -2.0));\n  color += 4.0/16.0 * texture2D(image, vTexCoord + vec2(0.0, texel.y * -1.0));\n  color += 6.0/16.0 * texture2D(image, vTexCoord + vec2(0.0, texel.y *  0.0));\n  color += 4.0/16.0 * texture2D(image, vTexCoord + vec2(0.0, texel.y *  1.0));\n  color += 1.0/16.0 * texture2D(image, vTexCoord + vec2(0.0, texel.y *  2.0));\n  gl_FragColor = color;\n}\n\n#endif\n";
+
+FXStage.prototype.blur5 = function (options) {
+  options = options || {};
+  var outputSize = this.getOutputSize(options.width, options.height);
+  var rth = this.getRenderTarget(outputSize.width, outputSize.height, options.depth, options.bpp);
+  var rtv = this.getRenderTarget(outputSize.width, outputSize.height, options.depth, options.bpp);
+  var source = this.getSourceTexture();
+  var programH = this.getShader(Blur5HGLSL);
+  programH.use();
+  programH.uniforms.imageSize(Vec2.create(source.width, source.height));
+  rth.bindAndClear();
+  this.drawFullScreenQuad(outputSize.width, outputSize.height, source, programH);
+  rth.unbind();
+  var programV = this.getShader(Blur5VGLSL);
+  programV.use();
+  programV.uniforms.imageSize(Vec2.create(source.width, source.height));
+  rtv.bindAndClear();
+  this.drawFullScreenQuad(outputSize.width, outputSize.height, rth.getColorAttachement(0), programV);
+  rtv.unbind();
+  return this.asFXStage(rtv, 'blur5');
+};
+
+module.exports = FXStage;
+}).call(this,"/node_modules/pex-fx/lib")
+},{"./FXStage":11,"fs":1,"pex-geom":13}],9:[function(require,module,exports){
+(function (__dirname){
+var geom  = require('pex-geom');
+var Vec2 = geom.Vec2;
+var FXStage = require('./FXStage');
+var fs = require('fs');
+
+var Downsample4GLSL = "#ifdef VERT\n\nattribute vec2 position;\nattribute vec2 texCoord;\n\nvarying vec2 vTexCoord;\n\nvoid main() {\n  gl_Position = vec4(position, 0.0, 1.0);\n  vTexCoord = texCoord;\n}\n\n#endif\n\n#ifdef FRAG\n\nvarying vec2 vTexCoord;\n\nuniform sampler2D image;\nuniform vec2 imageSize;\n\nvoid main() {\n  vec2 texel = vec2(1.0 / imageSize.x, 1.0 / imageSize.y);\n  vec4 color = vec4(0.0);\n  color += texture2D(image, vTexCoord + vec2(texel.x * -2.0, texel.y * -2.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -1.0, texel.y * -2.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  0.0, texel.y * -2.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  1.0, texel.y * -2.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -2.0, texel.y * -1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -1.0, texel.y * -1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  0.0, texel.y * -1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  1.0, texel.y * -1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -2.0, texel.y *  0.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -1.0, texel.y *  0.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  0.0, texel.y *  0.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  1.0, texel.y *  0.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -2.0, texel.y *  1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x * -1.0, texel.y *  1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  0.0, texel.y *  1.0));\n  color += texture2D(image, vTexCoord + vec2(texel.x *  1.0, texel.y *  1.0));\n  gl_FragColor = color / 16.0;\n}\n\n#endif";
+
+FXStage.prototype.downsample4 = function (options) {
+  options = options || {};
+  var outputSize = this.getOutputSize(options.width, options.height, true);
+  outputSize.width /= 4;
+  outputSize.height /= 4;
+  var rt = this.getRenderTarget(outputSize.width, outputSize.height, options.depth, options.bpp);
+  var source = this.getSourceTexture();
+  var program = this.getShader(Downsample4GLSL);
+  program.use();
+  program.uniforms.imageSize(Vec2.create(source.width, source.height));
+  rt.bindAndClear();
+  this.drawFullScreenQuad(outputSize.width, outputSize.height, source, program);
+  rt.unbind();
+  return this.asFXStage(rt, 'downsample4');
+};
+
+module.exports = FXStage;
+}).call(this,"/node_modules/pex-fx/lib")
+},{"./FXStage":11,"fs":1,"pex-geom":13}],10:[function(require,module,exports){
+function FXResourceMgr() {
+  this.cache = [];
+}
+
+FXResourceMgr.prototype.getResource = function(type, properties) {
+  properties = properties || {};
+  for (var i = 0; i < this.cache.length; i++) {
+    var res = this.cache[i];
+    if (res.type == type && !res.used) {
+      var areTheSame = true;
+      for (var propName in properties) {
+        if (properties[propName] != res.properties[propName]) {
+          areTheSame = false;
+        }
+      }
+      if (areTheSame)
+        return res;
+    }
+  }
+  return null;
+};
+
+FXResourceMgr.prototype.addResource = function(type, obj, properties) {
+  var res = {
+    type: type,
+    obj: obj,
+    properties: properties
+  };
+  this.cache.push(res);
+  return res;
+};
+
+FXResourceMgr.prototype.markAllAsNotUsed = function() {
+  for (var i = 0; i < this.cache.length; i++) {
+    this.cache[i].used = false;
+  }
+};
+
+module.exports = FXResourceMgr;
+},{}],11:[function(require,module,exports){
+var glu = require('pex-glu');
+var Context = glu.Context;
+var ScreenImage = glu.ScreenImage;
+var RenderTarget = glu.RenderTarget;
+var Program = glu.Program;
+var Texture2D = glu.Texture2D;
+var FXResourceMgr = require('./FXResourceMgr');
+
+var FXStageCount = 0;
+
+function FXStage(source, resourceMgr, fullscreenQuad) {
+  this.id = FXStageCount++;
+  console.log('FXStage+ ' + FXStageCount);
+  this.gl = Context.currentContext;
+  this.source = source || null;
+  this.resourceMgr = resourceMgr || new FXResourceMgr();
+  this.fullscreenQuad = fullscreenQuad || new ScreenImage();
+  this.defaultBPP = 8;
+}
+
+FXStage.prototype.reset = function() {
+  this.resourceMgr.markAllAsNotUsed();
+};
+
+FXStage.prototype.getOutputSize = function(width, height, verbose) {
+  if (width && height) {
+    return {
+      width: width,
+      height: height
+    };
+  }
+  else if (this.source) {
+    return {
+      width: this.source.width,
+      height: this.source.height
+    };
+  }
+  else {
+    var viewport = this.gl.getParameter(this.gl.VIEWPORT);
+    return {
+      width: viewport[2],
+      height: viewport[3]
+    };
+  }
+};
+
+FXStage.prototype.getRenderTarget = function(w, h, depth, bpp) {
+  depth = depth || false;
+  bpp = bpp || this.defaultBPP;
+  var resProps = {
+    w: w,
+    h: h,
+    depth: depth,
+    bpp: bpp
+  };
+  var res = this.resourceMgr.getResource('RenderTarget', resProps);
+  if (!res) {
+    var renderTarget = new RenderTarget(w, h, resProps);
+    res = this.resourceMgr.addResource('RenderTarget', renderTarget, resProps);
+  }
+  res.used = true;
+  return res.obj;
+};
+
+FXStage.prototype.getFXStage = function(name) {
+  var resProps = {};
+  var res = this.resourceMgr.getResource('FXStage', resProps);
+  if (!res) {
+    var fxState = new FXStage(null, this.resourceMgr, this.fullscreenQuad);
+    res = this.resourceMgr.addResource('FXStage', fxState, resProps);
+  }
+  res.used = true;
+  return res.obj;
+};
+
+FXStage.prototype.asFXStage = function(source, name) {
+  var stage = this.getFXStage(name);
+  stage.source = source;
+  stage.name = name + '_' + stage.id;
+  return stage;
+};
+
+FXStage.prototype.getShader = function(code) {
+  if (code.indexOf('.glsl') == code.length - 5) {
+    throw 'FXStage.getShader - loading files not supported yet.';
+  }
+  var resProps = { code: code };
+  var res = this.resourceMgr.getResource('Program', resProps);
+  if (!res) {
+    var program = new Program(code);
+    res = this.resourceMgr.addResource('Program', program, resProps);
+  }
+  res.used = true;
+  return res.obj;
+};
+
+FXStage.prototype.getSourceTexture = function(source) {
+  if (source) {
+    if (source.source) {
+      if (source.source.getColorAttachement) {
+        return source.source.getColorAttachement(0);
+      }
+      else return source.source;
+    }
+    else if (source.getColorAttachement) {
+      return source.getColorAttachement(0);
+    }
+    else return source;
+  }
+  else if (this.source) {
+    if (this.source.getColorAttachement) {
+      return this.source.getColorAttachement(0);
+    }
+    else return this.source;
+  }
+  else throw 'FXStage.getSourceTexture() No source texture!';
+};
+
+FXStage.prototype.drawFullScreenQuad = function(width, height, image, program) {
+  this.drawFullScreenQuadAt(0, 0, width, height, image, program);
+};
+
+FXStage.prototype.drawFullScreenQuadAt = function(x, y, width, height, image, program) {
+  var gl = this.gl;
+  gl.disable(gl.DEPTH_TEST);
+  var oldViewport = gl.getParameter(gl.VIEWPORT);
+  gl.viewport(x, y, width, height);
+  this.fullscreenQuad.draw(image, program);
+  gl.viewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+};
+
+FXStage.prototype.getImage = function(path) {
+  var resProps = { path: path };
+  var res = this.resourceMgr.getResource('Image', resProps);
+  if (!res) {
+    var image = Texture2D.load(path);
+    res = this.resourceMgr.addResource('Image', image, resProps);
+  }
+  res.used = false;
+  //can be shared so no need for locking
+  return res.obj;
+};
+
+FXStage.prototype.getFullScreenQuad = function() {
+  return this.fullscreenQuad;
+};
+
+module.exports = FXStage;
+},{"./FXResourceMgr":10,"pex-glu":22}],12:[function(require,module,exports){
+var FXStage = require('./FXStage');
+
+FXStage.prototype.render = function (options) {
+  var gl = this.gl;
+  var outputSize = this.getOutputSize(options.width, options.height);
+  var rt = this.getRenderTarget(outputSize.width, outputSize.height, options.depth, options.bpp);
+  var oldViewport = gl.getParameter(gl.VIEWPORT);
+  gl.viewport(0, 0, outputSize.width, outputSize.height);
+  rt.bindAndClear();
+  if (options.drawFunc) {
+    options.drawFunc();
+  }
+  rt.unbind();
+  gl.viewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+  return this.asFXStage(rt, 'render');
+};
+
+},{"./FXStage":11}],13:[function(require,module,exports){
 module.exports.Vec2 = require('./lib/Vec2');
 module.exports.Vec3 = require('./lib/Vec3');
 module.exports.Vec4 = require('./lib/Vec4');
 module.exports.Mat4 = require('./lib/Mat4');
 module.exports.Quat = require('./lib/Quat');
-module.exports.Edge = require('./lib/Edge');
-module.exports.Face3 = require('./lib/Face3');
-module.exports.Face4 = require('./lib/Face4');
-module.exports.FacePolygon = require('./lib/FacePolygon');
 module.exports.Ray = require('./lib/Ray');
 module.exports.Geometry = require('./lib/Geometry');
 module.exports.gen = {
   Cube: require('./lib/gen/Cube')
 }
-},{"./lib/Edge":7,"./lib/Face3":8,"./lib/Face4":9,"./lib/FacePolygon":10,"./lib/Geometry":11,"./lib/Mat4":12,"./lib/Quat":13,"./lib/Ray":14,"./lib/Vec2":15,"./lib/Vec3":16,"./lib/Vec4":17,"./lib/gen/Cube":18}],7:[function(require,module,exports){
+},{"./lib/Geometry":14,"./lib/Mat4":15,"./lib/Quat":16,"./lib/Ray":17,"./lib/Vec2":18,"./lib/Vec3":19,"./lib/Vec4":20,"./lib/gen/Cube":21}],14:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
-var Edge;
-
-Edge = (function() {
-  function Edge(a, b) {
-    this.a = a;
-    this.b = b;
-  }
-
-  return Edge;
-
-})();
-
-module.exports = Edge;
-
-},{}],8:[function(require,module,exports){
-// Generated by CoffeeScript 1.7.1
-var Face3;
-
-Face3 = (function() {
-  function Face3(a, b, c) {
-    this.a = a;
-    this.b = b;
-    this.c = c;
-  }
-
-  return Face3;
-
-})();
-
-module.exports = Face3;
-
-},{}],9:[function(require,module,exports){
-// Generated by CoffeeScript 1.7.1
-var Face4;
-
-Face4 = (function() {
-  function Face4(a, b, c, d) {
-    this.a = a;
-    this.b = b;
-    this.c = c;
-    this.d = d;
-  }
-
-  return Face4;
-
-})();
-
-module.exports = Face4;
-
-},{}],10:[function(require,module,exports){
-function FacePolygon(vertexIndexList) {
-  this.numVertices = vertexIndexList.length;
-  var indices = [
-      'a',
-      'b',
-      'c',
-      'd',
-      'e',
-      'f',
-      'g',
-      'h',
-      'i',
-      'j'
-    ];
-  for (var i = 0; i < vertexIndexList.length; i++) {
-    this[indices[i]] = vertexIndexList[i];
-  }
-}
-
-module.exports = FacePolygon;
-
-},{}],11:[function(require,module,exports){
-// Generated by CoffeeScript 1.7.1
-var Edge, Face3, Face4, Geometry, Vec2, Vec3, Vec4;
+var Geometry, Vec2, Vec3, Vec4;
 
 Vec2 = require('./Vec2');
 
 Vec3 = require('./Vec3');
 
 Vec4 = require('./Vec4');
-
-Edge = require('./Edge');
-
-Face3 = require('./Face3');
-
-Face4 = require('./Face4');
 
 Geometry = (function() {
   function Geometry(_arg) {
@@ -633,7 +846,7 @@ Geometry = (function() {
     ab = a + '_' + b;
     ba = b + '_' + a;
     if (!this.edgeHash[ab] && !this.edgeHash[ba]) {
-      this.edges.push(new Edge(a, b));
+      this.edges.push([a, b]);
       return this.edgeHash[ab] = this.edgeHash[ba] = true;
     }
   };
@@ -650,16 +863,16 @@ Geometry = (function() {
       _results = [];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         face = _ref[_i];
-        if (face instanceof Face3) {
-          this.addEdge(face.a, face.b);
-          this.addEdge(face.b, face.c);
-          this.addEdge(face.c, face.a);
+        if (face.length === 3) {
+          this.addEdge(face[0], face[1]);
+          this.addEdge(face[1], face[2]);
+          this.addEdge(face[2], face[0]);
         }
-        if (face instanceof Face4) {
-          this.addEdge(face.a, face.b);
-          this.addEdge(face.b, face.c);
-          this.addEdge(face.c, face.d);
-          _results.push(this.addEdge(face.d, face.a));
+        if (face.length === 4) {
+          this.addEdge(face[0], face[1]);
+          this.addEdge(face[1], face[2]);
+          this.addEdge(face[2], face[3]);
+          _results.push(this.addEdge(face[3], face[0]));
         } else {
           _results.push(void 0);
         }
@@ -682,7 +895,7 @@ Geometry = (function() {
   Geometry.prototype.computeSmoothNormals = function() {
     var count;
     if (!this.faces) {
-      throw 'Geometry.computeSmoothNormals no faces found';
+      throw 'Geometry[2]omputeSmoothNormals no faces found';
     }
     if (!this.normals) {
       this.addAttrib('normals', 'normal', null, false);
@@ -697,18 +910,18 @@ Geometry = (function() {
     this.faces.forEach((function(_this) {
       return function(f) {
         var a, ab, ac, b, c, n;
-        a = _this.vertices[f.a];
-        b = _this.vertices[f.b];
-        c = _this.vertices[f.c];
+        a = _this.vertices[f[0]];
+        b = _this.vertices[f[1]];
+        c = _this.vertices[f[2]];
         ab = Vec3.create().asSub(b, a).normalize();
         ac = Vec3.create().asSub(c, a).normalize();
         n = Vec3.create().asCross(ab, ac);
-        _this.normals[f.a].add(n);
-        count[f.a]++;
-        _this.normals[f.b].add(n);
-        count[f.b]++;
-        _this.normals[f.c].add(n);
-        return count[f.c]++;
+        _this.normals[f[0]].add(n);
+        count[f[0]]++;
+        _this.normals[f[1]].add(n);
+        count[f[1]]++;
+        _this.normals[f[2]].add(n);
+        return count[f[2]]++;
       };
     })(this));
     return this.normals.forEach(function(n, i) {
@@ -722,7 +935,7 @@ Geometry = (function() {
 
 module.exports = Geometry;
 
-},{"./Edge":7,"./Face3":8,"./Face4":9,"./Vec2":15,"./Vec3":16,"./Vec4":17}],12:[function(require,module,exports){
+},{"./Vec2":18,"./Vec3":19,"./Vec4":20}],15:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, Vec3;
 
@@ -1047,7 +1260,7 @@ Mat4.count = 0;
 
 module.exports = Mat4;
 
-},{"./Vec3":16}],13:[function(require,module,exports){
+},{"./Vec3":19}],16:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, Quat, kEpsilon;
 
@@ -1204,7 +1417,7 @@ Quat = (function() {
 
 module.exports = Quat;
 
-},{"./Mat4":12}],14:[function(require,module,exports){
+},{"./Mat4":15}],17:[function(require,module,exports){
 var Vec3 = require('./Vec3');
 
 //A ray.  
@@ -1293,7 +1506,7 @@ Ray.prototype.hitTestBoundingBox = function (bbox) {
 };
 
 module.exports = Ray;
-},{"./Vec3":16}],15:[function(require,module,exports){
+},{"./Vec3":19}],18:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Vec2;
 
@@ -1415,7 +1628,7 @@ Vec2 = (function() {
 
 module.exports = Vec2;
 
-},{}],16:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Vec3;
 
@@ -1618,7 +1831,7 @@ Vec3 = (function() {
 
 module.exports = Vec3;
 
-},{}],17:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Vec4;
 
@@ -1691,17 +1904,15 @@ Vec4 = (function() {
 
 module.exports = Vec4;
 
-},{}],18:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
-var Cube, Face4, Geometry, Vec2, Vec3,
+var Cube, Geometry, Vec2, Vec3,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
 Vec2 = require('../Vec2');
 
 Vec3 = require('../Vec3');
-
-Face4 = require('../Face4');
 
 Geometry = require('../Geometry');
 
@@ -1751,7 +1962,7 @@ Cube = (function(_super) {
             _results1 = [];
             for (i = _l = 0, _ref1 = nu - 1; 0 <= _ref1 ? _l <= _ref1 : _l >= _ref1; i = 0 <= _ref1 ? ++_l : --_l) {
               n = vertShift + j * (nu + 1) + i;
-              face = new Face4(n, n + nu + 1, n + nu + 2, n + 1);
+              face = [n, n + nu + 1, n + nu + 2, n + 1];
               _results1.push(this.faces.push(face));
             }
             return _results1;
@@ -1774,7 +1985,7 @@ Cube = (function(_super) {
 
 module.exports = Cube;
 
-},{"../Face4":9,"../Geometry":11,"../Vec2":15,"../Vec3":16}],19:[function(require,module,exports){
+},{"../Geometry":14,"../Vec2":18,"../Vec3":19}],22:[function(require,module,exports){
 module.exports.Context = require('./lib/Context');
 module.exports.Texture2D = require('./lib/Texture2D');
 module.exports.Program = require('./lib/Program');
@@ -1783,6 +1994,8 @@ module.exports.Mesh = require('./lib/Mesh');
 module.exports.OrthographicCamera = require('./lib/OrthographicCamera');
 module.exports.PerspectiveCamera = require('./lib/PerspectiveCamera');
 module.exports.Arcball = require('./lib/Arcball');
+module.exports.ScreenImage = require('./lib/ScreenImage');
+module.exports.RenderTarget = require('./lib/RenderTarget');
 
 //export all functions from Utils to module exports
 var Utils = require('./lib/Utils');
@@ -1791,7 +2004,7 @@ for(var funcName in Utils) {
 }
 
 
-},{"./lib/Arcball":20,"./lib/Context":22,"./lib/Material":23,"./lib/Mesh":24,"./lib/OrthographicCamera":25,"./lib/PerspectiveCamera":26,"./lib/Program":27,"./lib/Texture2D":30,"./lib/Utils":31}],20:[function(require,module,exports){
+},{"./lib/Arcball":23,"./lib/Context":25,"./lib/Material":26,"./lib/Mesh":27,"./lib/OrthographicCamera":28,"./lib/PerspectiveCamera":29,"./lib/Program":30,"./lib/RenderTarget":31,"./lib/ScreenImage":33,"./lib/Texture2D":35,"./lib/Utils":36}],23:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Arcball, Mat4, Quat, Vec2, Vec3, Vec4, _ref;
 
@@ -1906,7 +2119,7 @@ Arcball = (function() {
 
 module.exports = Arcball;
 
-},{"pex-geom":6}],21:[function(require,module,exports){
+},{"pex-geom":13}],24:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Buffer, Color, Context, Edge, Face3, Face4, FacePolygon, Vec2, Vec3, Vec4, _ref;
 
@@ -1996,27 +2209,27 @@ Buffer = (function() {
         this.dataBuf[i * 4 + 2] = v.b;
         this.dataBuf[i * 4 + 3] = v.a;
       }
-    } else if (data[0] instanceof Edge) {
+    } else if (data[0].length === 2) {
       if (!this.dataBuf || this.dataBuf.length !== data.length * 2) {
         this.dataBuf = new this.type(data.length * 2);
         this.elementSize = 1;
       }
       for (i = _n = 0, _len5 = data.length; _n < _len5; i = ++_n) {
         e = data[i];
-        this.dataBuf[i * 2 + 0] = e.a;
-        this.dataBuf[i * 2 + 1] = e.b;
+        this.dataBuf[i * 2 + 0] = e[0];
+        this.dataBuf[i * 2 + 1] = e[1];
       }
-    } else if ((data[0] instanceof Face3) || (data[0] instanceof Face4) || (data[0] instanceof FacePolygon)) {
+    } else if (data[0].length >= 3) {
       numIndices = 0;
       for (_o = 0, _len6 = data.length; _o < _len6; _o++) {
         face = data[_o];
-        if (face instanceof Face3) {
+        if (face.length === 3) {
           numIndices += 3;
         }
-        if (face instanceof Face4) {
+        if (face.length === 4) {
           numIndices += 6;
         }
-        if (face instanceof FacePolygon) {
+        if (face.length > 4) {
           throw 'FacePolygons are not supported in RenderableGeometry Buffers';
         }
       }
@@ -2027,19 +2240,19 @@ Buffer = (function() {
       index = 0;
       for (_p = 0, _len7 = data.length; _p < _len7; _p++) {
         face = data[_p];
-        if (face instanceof Face3) {
-          this.dataBuf[index + 0] = face.a;
-          this.dataBuf[index + 1] = face.b;
-          this.dataBuf[index + 2] = face.c;
+        if (face.length === 3) {
+          this.dataBuf[index + 0] = face[0];
+          this.dataBuf[index + 1] = face[1];
+          this.dataBuf[index + 2] = face[2];
           index += 3;
         }
-        if (face instanceof Face4) {
-          this.dataBuf[index + 0] = face.a;
-          this.dataBuf[index + 1] = face.b;
-          this.dataBuf[index + 2] = face.d;
-          this.dataBuf[index + 3] = face.d;
-          this.dataBuf[index + 4] = face.b;
-          this.dataBuf[index + 5] = face.c;
+        if (face.length === 4) {
+          this.dataBuf[index + 0] = face[0];
+          this.dataBuf[index + 1] = face[1];
+          this.dataBuf[index + 2] = face[3];
+          this.dataBuf[index + 3] = face[3];
+          this.dataBuf[index + 4] = face[1];
+          this.dataBuf[index + 5] = face[2];
           index += 6;
         }
       }
@@ -2056,7 +2269,7 @@ Buffer = (function() {
 
 module.exports = Buffer;
 
-},{"pex-color":4,"pex-geom":6,"pex-glu":19}],22:[function(require,module,exports){
+},{"pex-color":4,"pex-geom":13,"pex-glu":22}],25:[function(require,module,exports){
 var sys = require('pex-sys');
 
 var currentGLContext = null;
@@ -2084,7 +2297,7 @@ Object.defineProperty(Context, 'currentContext', {
 });
 
 module.exports = Context;
-},{"pex-sys":34}],23:[function(require,module,exports){
+},{"pex-sys":41}],26:[function(require,module,exports){
 var Context = require('./Context');
 
 function Material(program, uniforms) {
@@ -2128,7 +2341,7 @@ Material.prototype.use = function () {
 };
 
 module.exports = Material;
-},{"./Context":22}],24:[function(require,module,exports){
+},{"./Context":25}],27:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var BoundingBox, Context, Mat4, Mesh, Quat, RenderableGeometry, Vec3, _ref;
 
@@ -2148,10 +2361,15 @@ Mesh = (function() {
     if (this.primitiveType == null) {
       this.primitiveType = this.gl.TRIANGLES;
     }
-    if (options.useEdges) {
+    if (options.lines) {
       this.primitiveType = this.gl.LINES;
     }
-    this.useEdges = options.useEdges;
+    if (options.triangles) {
+      this.primitiveType = this.gl.TRIANGLES;
+    }
+    if (options.points) {
+      this.primitiveType = this.gl.POINTS;
+    }
     this.position = Vec3.create(0, 0, 0);
     this.rotation = Quat.create();
     this.scale = Vec3.create(1, 1, 1);
@@ -2174,10 +2392,10 @@ Mesh = (function() {
     }
     this.material.use();
     this.bindAttribs();
-    if (this.geometry.faces && this.geometry.faces.length > 0 && !this.useEdges) {
+    if (this.geometry.faces && this.geometry.faces.length > 0 && this.primitiveType !== this.gl.LINES) {
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.geometry.faces.buffer.handle);
       this.gl.drawElements(this.primitiveType, this.geometry.faces.buffer.dataBuf.length, this.gl.UNSIGNED_SHORT, 0);
-    } else if (this.geometry.edges && this.useEdges) {
+    } else if (this.geometry.edges && this.primitiveType === this.gl.LINES) {
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.geometry.edges.buffer.handle);
       this.gl.drawElements(this.primitiveType, this.geometry.edges.buffer.dataBuf.length, this.gl.UNSIGNED_SHORT, 0);
     } else if (this.geometry.vertices) {
@@ -2369,7 +2587,7 @@ Mesh = (function() {
 
 module.exports = Mesh;
 
-},{"./RenderableGeometry":28,"pex-geom":6,"pex-glu":19}],25:[function(require,module,exports){
+},{"./RenderableGeometry":32,"pex-geom":13,"pex-glu":22}],28:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, OrthographicCamera, Ray, Vec2, Vec3, Vec4, _ref;
 
@@ -2522,7 +2740,7 @@ OrthographicCamera = (function() {
 
 module.exports = OrthographicCamera;
 
-},{"pex-geom":6}],26:[function(require,module,exports){
+},{"pex-geom":13}],29:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Mat4, PerspectiveCamera, Ray, Vec2, Vec3, Vec4, _ref;
 
@@ -2673,7 +2891,7 @@ PerspectiveCamera = (function() {
 
 module.exports = PerspectiveCamera;
 
-},{"pex-geom":6}],27:[function(require,module,exports){
+},{"pex-geom":13}],30:[function(require,module,exports){
 var Context = require('./Context');
 
 var kVertexShaderPrefix = '' +
@@ -2884,7 +3102,72 @@ Program.makeUniformSetter = function(gl, type, location) {
 };
 
 module.exports = Program;
-},{"./Context":22}],28:[function(require,module,exports){
+},{"./Context":25}],31:[function(require,module,exports){
+var Context = require('./Context');
+var Texture2D = require('./Texture2D');
+
+function RenderTarget(width, height, options) {
+  var gl = this.gl = Context.currentContext;
+  this.width = width;
+  this.height = height;
+  this.oldBinding = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+  this.handle = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.handle);
+  this.colorAttachements = [];
+  if (options && options.depth) {
+    var oldRenderBufferBinding = gl.getParameter(gl.RENDERBUFFER_BINDING);
+    var depthBuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.getError();
+    //reset error
+    if (gl.DEPTH_COMPONENT24) {
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, this.width, this.height);
+    }
+    if (gl.getError() || !gl.DEPTH_COMPONENT24) {
+      //24 bit depth buffer might be not available, trying with 16
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, this.width, this.height);
+    }
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+    this.depthBuffer = depthBuffer;
+    gl.bindRenderbuffer(gl.RENDERBUFFER, oldRenderBufferBinding);
+  }
+  var texture = Texture2D.create(width, height, options);
+  texture.bind();
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + this.colorAttachements.length, texture.target, texture.handle, 0);
+  this.colorAttachements.push(texture);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.oldBinding);
+  this.oldBinding = null;
+}
+
+RenderTarget.prototype.bind = function () {
+  var gl = this.gl;
+  this.oldBinding = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.handle);
+};
+
+RenderTarget.prototype.bindAndClear = function () {
+  var gl = this.gl;
+  this.bind();
+  gl.clearColor(0, 0, 0, 1);
+  if (this.depthBuffer)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  else
+    gl.clear(gl.COLOR_BUFFER_BIT);
+};
+
+RenderTarget.prototype.unbind = function () {
+  var gl = this.gl;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.oldBinding);
+  this.oldBinding = null;
+};
+
+RenderTarget.prototype.getColorAttachement = function (index) {
+  index = index || 0;
+  return this.colorAttachements[index];
+};
+
+ module.exports = RenderTarget;
+},{"./Context":25,"./Texture2D":35}],32:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 var Buffer, Context, Geometry, indexTypes;
 
@@ -2959,7 +3242,113 @@ Geometry.prototype.dispose = function() {
 
 module.exports = {};
 
-},{"./Buffer":21,"./Context":22,"pex-geom":6}],29:[function(require,module,exports){
+},{"./Buffer":24,"./Context":25,"pex-geom":13}],33:[function(require,module,exports){
+(function (__dirname){
+var geom = require('pex-geom');
+var Vec2 = geom.Vec2;
+var Geometry = geom.Geometry;
+var Program = require('./Program');
+var Material = require('./Material');
+var Mesh = require('./Mesh');
+var fs = require('fs');
+
+var ScreenImageGLSL = "#ifdef VERT\n\nattribute vec2 position;\nattribute vec2 texCoord;\nuniform vec2 screenSize;\nuniform vec2 pixelPosition;\nuniform vec2 pixelSize;\nvarying vec2 vTexCoord;\n\nvoid main() {\n  float tx = position.x * 0.5 + 0.5; //-1 -> 0, 1 -> 1\n  float ty = -position.y * 0.5 + 0.5; //-1 -> 1, 1 -> 0\n  //(x + 0)/sw * 2 - 1, (x + w)/sw * 2 - 1\n  float x = (pixelPosition.x + pixelSize.x * tx)/screenSize.x * 2.0 - 1.0;  //0 -> -1, 1 -> 1\n  //1.0 - (y + h)/sh * 2, 1.0 - (y + h)/sh * 2\n  float y = 1.0 - (pixelPosition.y + pixelSize.y * ty)/screenSize.y * 2.0;  //0 -> 1, 1 -> -1\n  gl_Position = vec4(x, y, 0.0, 1.0);\n  vTexCoord = texCoord;\n}\n\n#endif\n\n#ifdef FRAG\n\nvarying vec2 vTexCoord;\nuniform sampler2D image;\nuniform float alpha;\n\nvoid main() {\n  gl_FragColor = texture2D(image, vTexCoord);\n  gl_FragColor.a *= alpha;\n}\n\n#endif";
+
+function ScreenImage(image, x, y, w, h, screenWidth, screenHeight) {
+  x = x !== undefined ? x : 0;
+  y = y !== undefined ? y : 0;
+  w = w !== undefined ? w : 1;
+  h = h !== undefined ? h : 1;
+  screenWidth = screenWidth !== undefined ? screenWidth : 1;
+  screenHeight = screenHeight !== undefined ? screenHeight : 1;
+  this.image = image;
+  var program = new Program(ScreenImageGLSL);
+  var uniforms = {
+    screenSize: Vec2.create(screenWidth, screenHeight),
+    pixelPosition: Vec2.create(x, y),
+    pixelSize: Vec2.create(w, h),
+    alpha: 1
+  };
+  if (image) {
+    uniforms.image = image;
+  }
+  var material = new Material(program, uniforms);
+  var vertices = [
+    new Vec2(-1, 1),
+    new Vec2(1, 1),
+    new Vec2(1, -1),
+    new Vec2(-1, -1)
+  ];
+  var texCoords = [
+    new Vec2(0, 1),
+    new Vec2(1, 1),
+    new Vec2(1, 0),
+    new Vec2(0, 0)
+  ];
+  var geometry = new Geometry({
+    vertices: vertices,
+    texCoords: texCoords
+  });
+  // 0----1  0,1   1,1
+  // | \  |      u
+  // |  \ |      v
+  // 3----2  0,0   0,1
+  geometry.faces.push([0, 2, 1]);
+  geometry.faces.push([0, 3, 2]);
+  this.mesh = new Mesh(geometry, material);
+}
+
+ScreenImage.prototype.setAlpha = function (alpha) {
+  this.mesh.material.uniforms.alpha = alpha;
+};
+
+ScreenImage.prototype.setPosition = function (position) {
+  this.mesh.material.uniforms.pixelPosition = position;
+};
+
+ScreenImage.prototype.setSize = function (size) {
+  this.mesh.material.uniforms.pixelSize = size;
+};
+
+ScreenImage.prototype.setWindowSize = function (size) {
+  this.mesh.material.uniforms.windowSize = size;
+};
+
+ScreenImage.prototype.setBounds = function (bounds) {
+  this.mesh.material.uniforms.pixelPosition.x = bounds.x;
+  this.mesh.material.uniforms.pixelPosition.y = bounds.y;
+  this.mesh.material.uniforms.pixelSize.x = bounds.width;
+  this.mesh.material.uniforms.pixelSize.y = bounds.height;
+};
+
+ScreenImage.prototype.setImage = function (image) {
+  this.image = image;
+  this.mesh.material.uniforms.image = image;
+};
+
+ScreenImage.prototype.draw = function (image, program) {
+  var oldImage = null;
+  if (image) {
+    oldImage = this.mesh.material.uniforms.image;
+    this.mesh.material.uniforms.image = image;
+  }
+  var oldProgram = null;
+  if (program) {
+    oldProgram = this.mesh.getProgram();
+    this.mesh.setProgram(program);
+  }
+  this.mesh.draw();
+  if (oldProgram) {
+    this.mesh.setProgram(oldProgram);
+  }
+  if (oldImage) {
+    this.mesh.material.uniforms.image = oldImage;
+  }
+};
+
+module.exports = ScreenImage;
+}).call(this,"/node_modules/pex-glu/lib")
+},{"./Material":26,"./Mesh":27,"./Program":30,"fs":1,"pex-geom":13}],34:[function(require,module,exports){
 var Context = require('./Context');
 
 function Texture(target) {
@@ -2987,7 +3376,7 @@ Texture.prototype.bind = function(unit) {
 };
 
 module.exports = Texture;
-},{"./Context":22}],30:[function(require,module,exports){
+},{"./Context":25}],35:[function(require,module,exports){
 var Context = require('./Context');
 var Texture = require('./Texture');
 
@@ -3120,7 +3509,7 @@ Texture2D.prototype.dispose = function() {
 };
 
 module.exports = Texture2D;
-},{"./Context":22,"./Texture":29}],31:[function(require,module,exports){
+},{"./Context":25,"./Texture":34}],36:[function(require,module,exports){
 var Context = require('./Context');
 
 module.exports.getCurrentContext = function() {
@@ -3198,7 +3587,36 @@ module.exports.lineWidth = function(width) {
   gl.lineWidth(width);
   return this;
 }
-},{"./Context":22}],32:[function(require,module,exports){
+},{"./Context":25}],37:[function(require,module,exports){
+module.exports.SolidColor = require('./lib/SolidColor');
+module.exports.ShowNormals = require('./lib/ShowNormals');
+},{"./lib/ShowNormals":38,"./lib/SolidColor":39}],38:[function(require,module,exports){
+(function (__dirname){
+var glu = require('pex-glu');
+var color = require('pex-color');
+var Context = glu.Context;
+var Material = glu.Material;
+var Program = glu.Program;
+var Color = color.Color;
+var merge = require('merge');
+var fs = require('fs');
+
+var ShowNormalsGLSL = "#ifdef VERT\n\nuniform mat4 projectionMatrix;\nuniform mat4 modelViewMatrix;\nuniform float pointSize;\nattribute vec3 position;\nattribute vec3 normal;\nvarying vec4 vColor;\nvoid main() {\n  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);\n  gl_PointSize = pointSize;\n  vColor = vec4(normal * 0.5 + 0.5, 1.0);\n}\n\n#endif\n\n#ifdef FRAG\n\nvarying vec4 vColor;\n\nvoid main() {\n  gl_FragColor = vColor;\n}\n\n#endif\n";
+
+function ShowNormals(uniforms) {
+  this.gl = Context.currentContext;
+  var program = new Program(ShowNormalsGLSL);
+  var defaults = { pointSize: 1 };
+  uniforms = merge(defaults, uniforms);
+  Material.call(this, program, uniforms);
+}
+
+ShowNormals.prototype = Object.create(Material.prototype);
+
+module.exports = ShowNormals;
+}).call(this,"/node_modules/pex-materials/lib")
+},{"fs":1,"merge":40,"pex-color":4,"pex-glu":22}],39:[function(require,module,exports){
+(function (__dirname){
 var glu = require('pex-glu');
 var color = require('pex-color');
 var Context = glu.Context;
@@ -3225,7 +3643,8 @@ function SolidColor(uniforms) {
 SolidColor.prototype = Object.create(Material.prototype);
 
 module.exports = SolidColor;
-},{"fs":1,"merge":33,"pex-color":4,"pex-glu":19}],33:[function(require,module,exports){
+}).call(this,"/node_modules/pex-materials/lib")
+},{"fs":1,"merge":40,"pex-color":4,"pex-glu":22}],40:[function(require,module,exports){
 /*!
  * @name JavaScript/NodeJS Merge v1.1.2
  * @author yeikos
@@ -3307,12 +3726,12 @@ module.exports = SolidColor;
 	}
 
 })(typeof module === 'object' && module && typeof module.exports === 'object' && module.exports);
-},{}],34:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 module.exports.Platform = require('./lib/Platform');
 module.exports.Window = require('./lib/Window');
 module.exports.Node = require('./lib/Node');
 module.exports.Time = require('./lib/Time');
-},{"./lib/Node":36,"./lib/Platform":37,"./lib/Time":38,"./lib/Window":39}],35:[function(require,module,exports){
+},{"./lib/Node":43,"./lib/Platform":44,"./lib/Time":45,"./lib/Window":46}],42:[function(require,module,exports){
 var Platform = require('./Platform');
 
 var requestAnimFrameFps = 60;
@@ -3607,20 +4026,20 @@ function simpleWindow(obj) {
 var BrowserWindow = { simpleWindow: simpleWindow };
 
 module.exports = BrowserWindow;
-},{"./Platform":37}],36:[function(require,module,exports){
+},{"./Platform":44}],43:[function(require,module,exports){
 var Platform = require('./Platform');
 
 module.exports.plask = Platform.isPlask ? require('plask') : {};
 module.exports.fs = Platform.isPlask ? require('fs') : {};
 module.exports.path = Platform.isPlask ? require('path') : {};
-},{"./Platform":37,"fs":1,"path":3,"plask":1}],37:[function(require,module,exports){
+},{"./Platform":44,"fs":1,"path":3,"plask":1}],44:[function(require,module,exports){
 (function (process){
 module.exports.isPlask = typeof window === 'undefined' && typeof process === 'object';
 module.exports.isBrowser = typeof window === 'object' && typeof document === 'object';
 module.exports.isEjecta = typeof ejecta === 'object' && typeof ejecta.include === 'function';
 
 }).call(this,require("/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":2}],38:[function(require,module,exports){
+},{"/Users/vorg/Workspace/vorg-pex/experiments/v3/pex-exp-modules/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":2}],45:[function(require,module,exports){
 var Time = {
     now: 0,
     prev: 0,
@@ -3693,7 +4112,7 @@ Time.togglePause = function() {
 };
 
 module.exports = Time;
-},{}],39:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 var Platform = require('./Platform');
 var BrowserWindow = require('./BrowserWindow');
 var Node = require('./Node');
@@ -3749,6 +4168,48 @@ var Window = {
 };
 
 module.exports = Window;
-},{"./BrowserWindow":35,"./Node":36,"./Platform":37,"./Time":38,"merge":40}],40:[function(require,module,exports){
-module.exports=require(33)
-},{}]},{},[32])
+},{"./BrowserWindow":42,"./Node":43,"./Platform":44,"./Time":45,"merge":47}],47:[function(require,module,exports){
+module.exports=require(40)
+},{}],48:[function(require,module,exports){
+var sys = require('pex-sys');
+var glu = require('pex-glu');
+var geom = require('pex-geom');
+var materials = require('pex-materials');
+var color = require('pex-color');
+var fx = require('pex-fx');
+
+var Cube = geom.gen.Cube;
+var Mesh = glu.Mesh;
+var ShowNormals = materials.ShowNormals;
+var PerspectiveCamera = glu.PerspectiveCamera;
+var Arcball = glu.Arcball;
+var Color = color.Color;
+
+sys.Window.create({
+  settings: {
+    width: 1280,
+    height: 720,
+    type: '3d',
+    fullscreen: sys.Platform.isBrowser
+  },
+  init: function() {
+    var cube = new Cube();
+    cube.computeEdges();
+    this.mesh = new Mesh(cube, new ShowNormals(), { triangles: true });
+
+    this.camera = new PerspectiveCamera(60, this.width / this.height);
+    this.arcball = new Arcball(this, this.camera);
+  },
+  drawScene: function() {
+    glu.clearColorAndDepth(Color.Red);
+    glu.enableDepthWriteAndRead(true);
+    this.mesh.draw(this.camera);
+  },
+  draw: function() {
+    glu.clearColorAndDepth(Color.Black);
+    var color = fx().render({ drawFunc: this.drawScene.bind(this), depth: true });
+    var smaller = color.downsample4().downsample4().blur5().blur5();
+    smaller.blit({ width: this.width, height: this.height });
+  }
+});
+},{"pex-color":4,"pex-fx":6,"pex-geom":13,"pex-glu":22,"pex-materials":37,"pex-sys":41}]},{},[48])

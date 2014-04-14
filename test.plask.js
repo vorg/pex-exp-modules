@@ -3,6 +3,7 @@ var glu = require('pex-glu');
 var geom = require('pex-geom');
 var materials = require('pex-materials');
 var color = require('pex-color');
+var fx = require('pex-fx');
 
 var Cube = geom.gen.Cube;
 var Mesh = glu.Mesh;
@@ -20,14 +21,21 @@ sys.Window.create({
   },
   init: function() {
     var cube = new Cube();
-    this.mesh = new Mesh(cube, new ShowNormals());
+    cube.computeEdges();
+    this.mesh = new Mesh(cube, new ShowNormals(), { triangles: true });
 
     this.camera = new PerspectiveCamera(60, this.width / this.height);
     this.arcball = new Arcball(this, this.camera);
   },
-  draw: function() {
+  drawScene: function() {
     glu.clearColorAndDepth(Color.Red);
     glu.enableDepthWriteAndRead(true);
     this.mesh.draw(this.camera);
+  },
+  draw: function() {
+    glu.clearColorAndDepth(Color.Black);
+    var color = fx().render({ drawFunc: this.drawScene.bind(this), depth: true });
+    var smaller = color.downsample4().downsample4().blur5().blur5();
+    smaller.blit({ width: this.width, height: this.height });
   }
 });
