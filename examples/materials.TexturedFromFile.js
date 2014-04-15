@@ -22,7 +22,8 @@ sys.Window.create({
   init: function() {
     var cube = new Cube();
     cube.computeEdges();
-    var tex = Texture2D.load('assets/plask.png');
+    //var tex = Texture2D.load('assets/test.png');
+    var tex = Texture2D.load('assets/uffizi_cross_posx.jpg');
     this.mesh = new Mesh(cube, new Textured({ texture: tex }), { triangles: true });
 
     this.camera = new PerspectiveCamera(60, this.width / this.height);

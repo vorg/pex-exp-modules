@@ -22,7 +22,7 @@ sys.Window.create({
   init: function() {
     var cube = new Cube();
     cube.computeEdges();
-    var tex = Texture2D.genNoise(256, 256);
+    var tex = Texture2D.genNoiseRGBA(255, 255);
     this.mesh = new Mesh(cube, new Textured({ texture: tex }), { triangles: true });
 
     this.camera = new PerspectiveCamera(60, this.width / this.height);
