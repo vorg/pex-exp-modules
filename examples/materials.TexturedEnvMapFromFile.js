@@ -1,4 +1,4 @@
-xvar sys = require('pex-sys');
+var sys = require('pex-sys');
 var glu = require('pex-glu');
 var geom = require('pex-geom');
 var materials = require('pex-materials');
@@ -7,12 +7,12 @@ var color = require('pex-color');
 var Cube = geom.gen.Cube;
 var Sphere = geom.gen.Sphere;
 var Mesh = glu.Mesh;
-var TexturedCubeMap = materials.TexturedCubeMap;
-var SkyBox = materials.SkyBox;
+var TexturedEnvMap = materials.TexturedEnvMap;
+var SkyBoxEnvMap = materials.SkyBoxEnvMap;
 var PerspectiveCamera = glu.PerspectiveCamera;
 var Arcball = glu.Arcball;
 var Color = color.Color;
-var TextureCube = glu.TextureCube;
+var Texture2D = glu.Texture2D;
 
 sys.Window.create({
   settings: {
@@ -22,9 +22,10 @@ sys.Window.create({
     fullscreen: sys.Platform.isBrowser
   },
   init: function() {
-    var cubeMap = TextureCube.load('assets/uffizi_cross_####.jpg');
-    this.sphereMesh = new Mesh(new Sphere(), new TexturedCubeMap({ texture: cubeMap }));
-    this.cubeMesh = new Mesh(new Cube(5), new SkyBox({ texture: cubeMap }));
+    var envMap = Texture2D.load('assets/envmap_blur.jpg');
+
+    this.sphereMesh = new Mesh(new Sphere(), new TexturedEnvMap({ texture: envMap }));
+    this.cubeMesh = new Mesh(new Cube(5), new SkyBoxEnvMap({ texture: envMap }));
 
     this.camera = new PerspectiveCamera(60, this.width / this.height);
     this.arcball = new Arcball(this, this.camera);

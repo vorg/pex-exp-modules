@@ -24,7 +24,7 @@ sys.Window.create({
     var cube = new Cube();
     cube.computeEdges();
     var tex = Texture2D.load('assets/test.png');
-    tex = Texture2D.load('assets/uffizi_cross_posx.jpg');
+    var tex = Texture2D.load('assets/uffizi_cross_posx.jpg');
     this.mesh = new Mesh(cube, new Textured({ texture: tex }), { triangles: true });
 
     this.camera = new PerspectiveCamera(60, this.width / this.height);
@@ -1714,12 +1714,12 @@ Cube = (function(_super) {
         return _results;
       };
     })(this);
-    makePlane('x', 'y', 'z', sx, sy, nx, ny, sz / 2, 1, 1);
-    makePlane('x', 'y', 'z', sx, sy, nx, ny, -sz / 2, -1, 1);
-    makePlane('z', 'y', 'x', sz, sy, nz, ny, -sx / 2, 1, 1);
-    makePlane('z', 'y', 'x', sz, sy, nz, ny, sx / 2, -1, 1);
-    makePlane('x', 'z', 'y', sx, sz, nx, nz, sy / 2, 1, -1);
-    makePlane('x', 'z', 'y', sx, sz, nx, nz, -sy / 2, 1, 1);
+    makePlane('x', 'y', 'z', sx, sy, nx, ny, sz / 2, 1, -1);
+    makePlane('x', 'y', 'z', sx, sy, nx, ny, -sz / 2, -1, -1);
+    makePlane('z', 'y', 'x', sz, sy, nz, ny, -sx / 2, 1, -1);
+    makePlane('z', 'y', 'x', sz, sy, nz, ny, sx / 2, -1, -1);
+    makePlane('x', 'z', 'y', sx, sz, nx, nz, sy / 2, 1, 1);
+    makePlane('x', 'z', 'y', sx, sz, nx, nz, -sy / 2, 1, -1);
   }
 
   return Cube;
@@ -3246,6 +3246,7 @@ Texture2D.genNoise = function(w, h) {
   var gl = Context.currentContext;
   var texture = new Texture2D();
   texture.bind();
+  //TODO: should check unpack alignment as explained here https://groups.google.com/forum/#!topic/webgl-dev-list/wuUZP7iTr9Q
   var b = new ArrayBuffer(w * h * 2);
   var pixels = new Uint8Array(b);
   for (var y = 0; y < h; y++) {
@@ -3303,7 +3304,7 @@ Texture2D.load = function(src, callback) {
   texture.handle = gl.createTexture();
   texture.target = gl.TEXTURE_2D;
   texture.gl = gl;
-  IO.loadImageData(gl, texture, texture.target, src, function(image) {
+  IO.loadImageData(gl, texture, texture.target, src, true, function(image) {
     if (!image) {
       texture.dispose();
       var noise = Texture2D.getNoise();
@@ -3383,7 +3384,7 @@ TextureCube.load = function (src) {
   gl.texParameteri(texture.target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(texture.target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   for (var i = 0; i < cubeMapTargets.length; i += 2) {
-    IO.loadImageData(gl, texture, cubeMapTargets[i], src.replace('####', cubeMapTargets[i + 1]), function (image) {
+    IO.loadImageData(gl, texture, cubeMapTargets[i], src.replace('####', cubeMapTargets[i + 1]), false, function (image) {
       texture.width = image.width;
       texture.height = image.height;
     });
@@ -4028,12 +4029,17 @@ var PlaskIO = function() {
     return process.cwd();
   };
 
-  IO.loadImageData = function (gl, texture, target, file, callback) {
+  IO.loadImageData = function (gl, texture, target, file, flip, callback) {
     var fullPath = path.resolve(IO.getWorkingDirectory(), file);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(texture.target, texture.handle);
     var canvas = plask.SkCanvas.createFromImage(fullPath);
-    gl.texImage2DSkCanvasNoFlip(target, 0, canvas);
+    if (flip) {
+      gl.texImage2DSkCanvas(target, 0, canvas);
+    }
+    else {
+      gl.texImage2DSkCanvasNoFlip(target, 0, canvas);
+    }
     if (callback) {
       callback(canvas);
     }
@@ -4081,12 +4087,12 @@ var WebIO = function () {
     request.send(null);
   };
 
-  IO.loadImageData = function (gl, texture, target, url, callback) {
+  IO.loadImageData = function (gl, texture, target, url, flip, callback) {
     var image = new Image();
     image.onload = function () {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(texture.target, texture.handle);
-      //gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, flip);
       gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
       if (callback) {
         callback(image);
