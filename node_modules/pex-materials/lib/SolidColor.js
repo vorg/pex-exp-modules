@@ -4,7 +4,7 @@ var Context = glu.Context;
 var Material = glu.Material;
 var Program = glu.Program;
 var Color = color.Color;
-var merge = require('merge');
+var extend = require('extend');
 var fs = require('fs');
 
 var SolidColorGLSL = fs.readFileSync(__dirname + '/SolidColor.glsl', 'utf8');
@@ -17,7 +17,7 @@ function SolidColor(uniforms) {
     pointSize: 1,
     premultiplied: 0
   };
-  uniforms = merge(defaults, uniforms);
+  uniforms = extend(defaults, uniforms);
   Material.call(this, program, uniforms);
 }
 

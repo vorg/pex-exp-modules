@@ -1,4 +1,5 @@
 var sys = require('pex-sys');
+var extend = require('extend');
 var IO = sys.IO;
 var Context = require('./Context');
 var Texture = require('./Texture');
@@ -11,7 +12,13 @@ function Texture2D() {
 Texture2D.prototype = Object.create(Texture.prototype);
 
 Texture2D.create = function(w, h, options) {
-  options = options || {};
+  var defaultOptions = {
+    reapeat: false,
+    mipmap: false,
+    nearest: false
+  };
+  options = extend(defaultOptions, options);
+
   var texture = new Texture2D();
   texture.bind();
   var gl = texture.gl;
@@ -23,11 +30,27 @@ Texture2D.create = function(w, h, options) {
   else {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   }
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  var wrapS = options.repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+  var wrapT = options.repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+  var magFilter = gl.LINEAR;
+  var minFilter = gl.LINEAR;
+
+  if (options.nearest) {
+    magFilter = gl.NEAREST;
+    minFilter = gl.NEAREST;
+  }
+
+  if (options.mipmap) {
+    minFilter = gl.GL_LINEAR_MIPMAP_LINEAR;
+  }
+
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapT);
   gl.bindTexture(gl.TEXTURE_2D, null);
+
   texture.width = w;
   texture.height = h;
   texture.target = gl.TEXTURE_2D;
@@ -98,12 +121,20 @@ Texture2D.genNoiseRGBA = function(w, h) {
   return texture;
 };
 
-Texture2D.load = function(src, callback) {
+Texture2D.load = function(src, options, callback) {
+  if (!callback && typeof(options) == 'function') {
+    callback = options;
+    optiosn = null;
+  }
+  var defaultOptions = {
+    reapeat: false,
+    mipmap: false,
+    nearest: false
+  };
+  options = extend(defaultOptions, options);
+
   var gl = Context.currentContext;
-  var texture = new Texture2D();
-  texture.handle = gl.createTexture();
-  texture.target = gl.TEXTURE_2D;
-  texture.gl = gl;
+  var texture = Texture2D.create(0, 0, options);
   IO.loadImageData(gl, texture, texture.target, src, true, function(image) {
     if (!image) {
       texture.dispose();
@@ -112,10 +143,9 @@ Texture2D.load = function(src, callback) {
       texture.width = noise.width;
       texture.height = noise.height;
     }
-    gl.texParameteri(texture.target, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(texture.target, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(texture.target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(texture.target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (options.mipmap) {
+      texture.generateMipmap();
+    }
     gl.bindTexture(texture.target, null);
     texture.width = image.width;
     texture.height = image.height;
@@ -132,5 +162,10 @@ Texture2D.prototype.dispose = function() {
     this.handle = null;
   }
 };
+
+Texture2D.prototype.generateMipmap = function() {
+  this.gl.bindTexture(this.gl.TEXTURE_2D, this.handle);
+  this.gl.generateMipmap(this.gl.TEXTURE_2D);
+}
 
 module.exports = Texture2D;

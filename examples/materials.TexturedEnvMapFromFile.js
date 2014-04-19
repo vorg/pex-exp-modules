@@ -32,7 +32,7 @@ sys.Window.create({
   },
   draw: function() {
     glu.clearColorAndDepth(Color.Black);
-    glu.enableDepthWriteAndRead(true);
+    glu.enableDepthReadAndWrite(true);
     this.cubeMesh.draw(this.camera);
     this.sphereMesh.draw(this.camera);
   }

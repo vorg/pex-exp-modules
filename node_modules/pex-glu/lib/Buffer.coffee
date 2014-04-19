@@ -2,6 +2,12 @@
 { Vec2, Vec3, Vec4, Edge, Face3, Face4, FacePolygon } = require('pex-geom')
 { Color } = require('pex-color')
 
+hasProperties = (obj, list) ->
+  for prop in list
+    if typeof(obj[prop]) == 'undefined'
+      return false
+  return true
+
 class Buffer
   constructor: (target, type, data, usage) ->
     @gl = Context.currentContext
@@ -28,24 +34,7 @@ class Buffer
         @dataBuf[i] = v
         @elementSize = 1
 
-    else if data[0] instanceof Vec2
-      if !@dataBuf || @dataBuf.length != data.length * 2
-        @dataBuf = new @type(data.length * 2)
-        @elementSize = 2
-      for v, i in data
-        @dataBuf[i * 2 + 0] = v.x
-        @dataBuf[i * 2 + 1] = v.y
-
-    else if data[0] instanceof Vec3
-      if !@dataBuf || @dataBuf.length != data.length * 3
-        @dataBuf = new @type(data.length * 3)
-        @elementSize = 3
-      for v, i in data
-        @dataBuf[i * 3 + 0] = v.x
-        @dataBuf[i * 3 + 1] = v.y
-        @dataBuf[i * 3 + 2] = v.z
-
-    else if data[0] instanceof Vec4
+    else if hasProperties(data[0], ['x', 'y', 'z', 'w'])
       if !@dataBuf || @dataBuf.length != data.length * 4
         @dataBuf = new @type(data.length * 4)
         @elementSize = 4
@@ -55,7 +44,24 @@ class Buffer
         @dataBuf[i * 4 + 2] = v.z
         @dataBuf[i * 4 + 3] = v.w
 
-    else if data[0] instanceof Color
+    else if hasProperties(data[0], ['x', 'y', 'z'])
+      if !@dataBuf || @dataBuf.length != data.length * 3
+        @dataBuf = new @type(data.length * 3)
+        @elementSize = 3
+      for v, i in data
+        @dataBuf[i * 3 + 0] = v.x
+        @dataBuf[i * 3 + 1] = v.y
+        @dataBuf[i * 3 + 2] = v.z
+
+    else if hasProperties(data[0], ['x', 'y'])
+      if !@dataBuf || @dataBuf.length != data.length * 2
+        @dataBuf = new @type(data.length * 2)
+        @elementSize = 2
+      for v, i in data
+        @dataBuf[i * 2 + 0] = v.x
+        @dataBuf[i * 2 + 1] = v.y
+
+    else if hasProperties(data[0], ['r', 'g', 'b', 'a'])
       if !@dataBuf || @dataBuf.length != data.length * 4
         @dataBuf = new @type(data.length * 4)
         @elementSize = 4

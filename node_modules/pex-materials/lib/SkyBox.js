@@ -4,7 +4,7 @@ var Context = glu.Context;
 var Material = glu.Material;
 var Program = glu.Program;
 var Color = color.Color;
-var merge = require('merge');
+var extend = require('extend');
 var fs = require('fs');
 
 var SkyBoxGLSL = fs.readFileSync(__dirname + '/SkyBox.glsl', 'utf8');
@@ -13,7 +13,7 @@ function SkyBox(uniforms) {
   this.gl = Context.currentContext;
   var program = new Program(SkyBoxGLSL);
   var defaults = {};
-  uniforms = merge(defaults, uniforms);
+  uniforms = extend(defaults, uniforms);
   Material.call(this, program, uniforms);
 }
 
