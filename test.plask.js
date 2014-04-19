@@ -29,7 +29,7 @@ sys.Window.create({
   },
   drawScene: function() {
     glu.clearColorAndDepth(Color.Red);
-    glu.enableDepthWriteAndRead(true);
+    glu.enableDepthReadAndWrite(true);
     this.mesh.draw(this.camera);
   },
   draw: function() {
